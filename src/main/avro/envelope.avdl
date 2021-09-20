@@ -1,0 +1,10 @@
+@namespace("com.github.dfauth.avro")
+protocol EnvelopeProtocol {
+
+  record Envelope {
+    string id;
+    map<string> metadata = {};
+    string schemaRegistryTopic;
+    bytes payload;
+  }
+}

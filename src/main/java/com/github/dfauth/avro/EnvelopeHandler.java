@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableMap;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.Deserializer;
+import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +13,7 @@ import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.BiFunction;
 
 import static java.util.Objects.requireNonNull;
 
@@ -21,6 +23,20 @@ public class EnvelopeHandler<T extends SpecificRecord> {
 
     private final Serializer<T> serializer;
     private final Deserializer<T> deserializer;
+
+    public static <T extends SpecificRecord, R extends SpecificRecord> EnvelopeHandler<R> recast(EnvelopeHandler<T> envelopeHandler) {
+        return EnvelopeHandler.of(new AvroSerialization(new Serde(){
+            @Override
+            public Serializer<SpecificRecord> serializer() {
+                return (Serializer<SpecificRecord>) envelopeHandler.serializer;
+            }
+
+            @Override
+            public Deserializer<SpecificRecord> deserializer() {
+                return (Deserializer<SpecificRecord>) envelopeHandler.deserializer;
+            }
+        }));
+    }
 
     public static <T extends SpecificRecord> EnvelopeHandler<T> of(AvroSerialization avroSerialization, Class<T> targetClass) {
         return new EnvelopeHandler<>(
@@ -80,6 +96,21 @@ public class EnvelopeHandler<T extends SpecificRecord> {
         try {
             logger.info("Deserialize payload with id=[{}], schemaRegistryTopic=[{}]", e.getId(), e.getSchemaRegistryTopic());
             return deserializer.deserialize(e.getSchemaRegistryTopic(), e.getPayload().array());
+        } catch (Exception e1) {
+            final String message = "Unable to extract record from envelope with topic " + e.getSchemaRegistryTopic();
+            logger.error(message, e);
+            throw new SerializationException(message, e1);
+        }
+    }
+
+    public <R> R extractRecord(Envelope e, BiFunction<T, Map<String,String>,R> f) {
+        requireNonNull(e, "envelope is null");
+        requireNonNull(e.getPayload(), "envelope payload is null");
+        requireNonNull(f, "envelope processor is null");
+
+        try {
+            logger.info("Deserialize payload with id=[{}], schemaRegistryTopic=[{}]", e.getId(), e.getSchemaRegistryTopic());
+            return f.apply(deserializer.deserialize(e.getSchemaRegistryTopic(), e.getPayload().array()),e.getMetadata());
         } catch (Exception e1) {
             final String message = "Unable to extract record from envelope with topic " + e.getSchemaRegistryTopic();
             logger.error(message, e);

@@ -14,6 +14,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
@@ -103,14 +104,14 @@ public class EnvelopeHandler<T extends SpecificRecord> {
         }
     }
 
-    public <R> R extractRecord(Envelope e, BiFunction<T, Map<String,String>,R> f) {
+    public <R> R extractRecord(Envelope e, BiFunction<T, Map<String,Object>,R> f) {
         requireNonNull(e, "envelope is null");
         requireNonNull(e.getPayload(), "envelope payload is null");
         requireNonNull(f, "envelope processor is null");
 
         try {
             logger.info("Deserialize payload with id=[{}], schemaRegistryTopic=[{}]", e.getId(), e.getSchemaRegistryTopic());
-            return f.apply(deserializer.deserialize(e.getSchemaRegistryTopic(), e.getPayload().array()),e.getMetadata());
+            return f.apply(deserializer.deserialize(e.getSchemaRegistryTopic(), e.getPayload().array()),e.getMetadata().entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         } catch (Exception e1) {
             final String message = "Unable to extract record from envelope with topic " + e.getSchemaRegistryTopic();
             logger.error(message, e);
